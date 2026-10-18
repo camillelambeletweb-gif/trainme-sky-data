@@ -1,0 +1,50 @@
+name: Bahndaten aktualisieren
+
+on:
+  schedule:
+    - cron: '17 */2 * * *' # alle 2 Stunden (so oft aktualisiert CelesTrak)
+  workflow_dispatch: # von Hand starten: Actions → "Bahndaten aktualisieren" → Run workflow
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bahndaten von CelesTrak holen
+        env:
+          PAGES: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: bash fetch.sh
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # GitHub schaltet geplante Abläufe ab, wenn 60 Tage nichts im Repository passiert.
+      # Darum einmal pro Woche (Montag, erster Lauf) ein leerer Eintrag.
+      - name: Wöchentliches Lebenszeichen
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%u%H)" = "100" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Lebenszeichen $(date -u +%F)"
+            git push
+          fi
